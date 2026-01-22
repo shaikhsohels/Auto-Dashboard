@@ -4,6 +4,9 @@ import plotly.express as px
 import sqlite3
 import json
 
+# -----------------------------
+# Page Configuration
+# -----------------------------
 st.set_page_config(
     page_title="Advanced Auto Dashboard",
     layout="wide"
@@ -11,9 +14,9 @@ st.set_page_config(
 
 st.title("🚀 Advanced Auto Dashboard Creator")
 
-# =========================
-# FILE UPLOAD
-# =========================
+# -----------------------------
+# File Upload
+# -----------------------------
 file = st.file_uploader(
     "Upload CSV, Excel, JSON or SQLite DB",
     type=["csv", "xlsx", "json", "db"]
@@ -23,43 +26,63 @@ df = None
 
 if file:
 
-    # CSV
+    # CSV file
     if file.name.endswith(".csv"):
         df = pd.read_csv(file)
 
-    # Excel
+    # Excel file
     elif file.name.endswith(".xlsx"):
         df = pd.read_excel(file)
 
-    # JSON
+    # JSON file
     elif file.name.endswith(".json"):
         data = json.load(file)
         df = pd.DataFrame(data)
 
-    # SQLite
+    # SQLite database
     elif file.name.endswith(".db"):
         conn = sqlite3.connect(file)
         tables = pd.read_sql(
             "SELECT name FROM sqlite_master WHERE type='table';",
             conn
         )
-        table_name = st.selectbox("Select SQL table", tables["name"])
+        table_name = st.selectbox(
+            "Select SQL Table",
+            tables["name"]
+        )
         df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
 
-# =========================
-# DASHBOARD
-# =========================
+# -----------------------------
+# Dashboard Section
+# -----------------------------
 if df is not None:
 
-    st.success("Data loaded successfully")
+    st.success("✅ Data loaded successfully")
 
-    st.subheader("Data Preview")
-    st.dataframe(df.head())
+    # -----------------------------
+    # Data Preview with Slider
+    # -----------------------------
+    st.subheader("📄 Data Preview")
 
-    numeric_cols = df.select_dtypes(include=["int", "float"]).columns
+    rows = st.slider(
+        "Select number of rows to preview",
+        min_value=5,
+        max_value=100,
+        value=10
+    )
+
+    st.dataframe(df.head(rows))
+
+    # -----------------------------
+    # Column Detection
+    # -----------------------------
+    numeric_cols = df.select_dtypes(include=["int64", "float64"]).columns
     categorical_cols = df.select_dtypes(include=["object"]).columns
 
-    st.sidebar.header("Dashboard Settings")
+    # -----------------------------
+    # Sidebar Controls
+    # -----------------------------
+    st.sidebar.header("📊 Dashboard Controls")
 
     chart_type = st.sidebar.selectbox(
         "Select Chart Type",
@@ -85,9 +108,9 @@ if df is not None:
         numeric_cols
     )
 
-    # =========================
-    # CHART GENERATOR
-    # =========================
+    # -----------------------------
+    # Chart Generator
+    # -----------------------------
     if chart_type == "Bar Chart":
         fig = px.bar(df, x=x_col, y=y_col)
 
@@ -114,15 +137,15 @@ if df is not None:
             df,
             names=x_col,
             values=y_col,
-            hole=0.5
+            hole=0.55
         )
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # =========================
-    # KPI SECTION
-    # =========================
-    st.subheader("📊 KPIs")
+    # -----------------------------
+    # KPI Section
+    # -----------------------------
+    st.subheader("📈 Key Metrics")
 
     col1, col2, col3 = st.columns(3)
 
