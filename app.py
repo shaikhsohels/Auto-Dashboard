@@ -1,48 +1,131 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import sqlite3
+import json
 
-st.set_page_config(page_title="Auto Dashboard", layout="wide")
-
-st.title("📊 Automated Data Dashboard")
-
-uploaded_file = st.file_uploader(
-    "Upload CSV or Excel file",
-    type=["csv", "xlsx"]
+st.set_page_config(
+    page_title="Advanced Auto Dashboard",
+    layout="wide"
 )
 
-if uploaded_file is not None:
+st.title("🚀 Advanced Auto Dashboard Creator")
 
-    if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
-    else:
-        df = pd.read_excel(uploaded_file)
+# =========================
+# FILE UPLOAD
+# =========================
+file = st.file_uploader(
+    "Upload CSV, Excel, JSON or SQLite DB",
+    type=["csv", "xlsx", "json", "db"]
+)
 
-    st.subheader("Preview of Data")
+df = None
+
+if file:
+
+    # CSV
+    if file.name.endswith(".csv"):
+        df = pd.read_csv(file)
+
+    # Excel
+    elif file.name.endswith(".xlsx"):
+        df = pd.read_excel(file)
+
+    # JSON
+    elif file.name.endswith(".json"):
+        data = json.load(file)
+        df = pd.DataFrame(data)
+
+    # SQLite
+    elif file.name.endswith(".db"):
+        conn = sqlite3.connect(file)
+        tables = pd.read_sql(
+            "SELECT name FROM sqlite_master WHERE type='table';",
+            conn
+        )
+        table_name = st.selectbox("Select SQL table", tables["name"])
+        df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
+
+# =========================
+# DASHBOARD
+# =========================
+if df is not None:
+
+    st.success("Data loaded successfully")
+
+    st.subheader("Data Preview")
     st.dataframe(df.head())
 
-    numeric_cols = df.select_dtypes(include=["int64", "float64"]).columns
+    numeric_cols = df.select_dtypes(include=["int", "float"]).columns
     categorical_cols = df.select_dtypes(include=["object"]).columns
 
-    st.sidebar.header("Dashboard Controls")
+    st.sidebar.header("Dashboard Settings")
 
-    if len(categorical_cols) > 0 and len(numeric_cols) > 0:
-        x_axis = st.sidebar.selectbox("Select Category", categorical_cols)
-        y_axis = st.sidebar.selectbox("Select Value", numeric_cols)
+    chart_type = st.sidebar.selectbox(
+        "Select Chart Type",
+        [
+            "Bar Chart",
+            "Column Chart",
+            "Line Chart",
+            "Scatter Plot",
+            "Pie Chart",
+            "Histogram",
+            "Treemap",
+            "Radial Bar Chart"
+        ]
+    )
 
-        chart_type = st.sidebar.radio(
-            "Select Chart Type",
-            ["Bar Chart", "Line Chart", "Pie Chart"]
+    x_col = st.sidebar.selectbox(
+        "Select X-axis",
+        df.columns
+    )
+
+    y_col = st.sidebar.selectbox(
+        "Select Y-axis",
+        numeric_cols
+    )
+
+    # =========================
+    # CHART GENERATOR
+    # =========================
+    if chart_type == "Bar Chart":
+        fig = px.bar(df, x=x_col, y=y_col)
+
+    elif chart_type == "Column Chart":
+        fig = px.bar(df, x=x_col, y=y_col)
+
+    elif chart_type == "Line Chart":
+        fig = px.line(df, x=x_col, y=y_col)
+
+    elif chart_type == "Scatter Plot":
+        fig = px.scatter(df, x=x_col, y=y_col)
+
+    elif chart_type == "Pie Chart":
+        fig = px.pie(df, names=x_col, values=y_col)
+
+    elif chart_type == "Histogram":
+        fig = px.histogram(df, x=y_col)
+
+    elif chart_type == "Treemap":
+        fig = px.treemap(df, path=[x_col], values=y_col)
+
+    elif chart_type == "Radial Bar Chart":
+        fig = px.pie(
+            df,
+            names=x_col,
+            values=y_col,
+            hole=0.5
         )
 
-        if chart_type == "Bar Chart":
-            fig = px.bar(df, x=x_axis, y=y_axis)
-        elif chart_type == "Line Chart":
-            fig = px.line(df, x=x_axis, y=y_axis)
-        else:
-            fig = px.pie(df, names=x_axis, values=y_axis)
+    st.plotly_chart(fig, use_container_width=True)
 
-        st.plotly_chart(fig, use_container_width=True)
+    # =========================
+    # KPI SECTION
+    # =========================
+    st.subheader("📊 KPIs")
 
-    st.success("Dashboard created successfully ✅")
+    col1, col2, col3 = st.columns(3)
 
+    col1.metric("Total Rows", df.shape[0])
+    col2.metric("Total Columns", df.shape[1])
+    col3.metric("Missing Values", df.isnull().sum().sum())
