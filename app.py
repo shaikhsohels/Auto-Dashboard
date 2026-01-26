@@ -7,40 +7,34 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-# -------------------------------------------------
+# ======================================================
 # PAGE CONFIG
-# -------------------------------------------------
+# ======================================================
 st.set_page_config(
-    page_title="Auto Dashboard App",
+    page_title="Auto Dashboard Generator",
     page_icon="📊",
     layout="wide"
 )
 
-# -------------------------------------------------
+# ======================================================
 # STYLE
-# -------------------------------------------------
+# ======================================================
 st.markdown("""
 <style>
-.main-header {
+.main-title {
     font-size: 2.8rem;
     font-weight: 800;
     text-align: center;
     color: #1f77b4;
 }
-.stButton>button {
-    width:100%;
-    background:#1f77b4;
-    color:white;
-    font-weight:bold;
-}
 </style>
 """, unsafe_allow_html=True)
 
-# -------------------------------------------------
+# ======================================================
 # LOAD DATA
-# -------------------------------------------------
+# ======================================================
 @st.cache_data
-def load_data(file):
+def load_file(file):
     if file.name.endswith(".csv"):
         return pd.read_csv(file)
     elif file.name.endswith((".xlsx", ".xls")):
@@ -52,9 +46,9 @@ def load_data(file):
     return None
 
 
-# -------------------------------------------------
+# ======================================================
 # COLUMN DETECTION
-# -------------------------------------------------
+# ======================================================
 def detect_columns(df):
     numeric = df.select_dtypes(include=np.number).columns.tolist()
     categorical = df.select_dtypes(include=["object", "category"]).columns.tolist()
@@ -62,146 +56,126 @@ def detect_columns(df):
 
     for col in categorical.copy():
         parsed = pd.to_datetime(df[col], errors="coerce")
-        if parsed.notna().sum() > 0.8 * len(df):
+        if parsed.notna().mean() > 0.8:
             datetime.append(col)
             categorical.remove(col)
 
     return numeric, categorical, datetime
 
 
-# -------------------------------------------------
+# ======================================================
 # SAFE AGGREGATION
-# -------------------------------------------------
-def aggregate(df, cat, val, top=15):
+# ======================================================
+def safe_group(df, cat, num, top=15):
     df = df.copy()
+
+    for c in ["index", "level_0"]:
+        if c in df.columns:
+            df.drop(columns=c, inplace=True)
+
     df[cat] = df[cat].astype(str)
-    return (
-        df.groupby(cat)[val]
+
+    agg = (
+        df.groupby(cat, as_index=False)[num]
         .sum()
-        .reset_index()
-        .sort_values(val, ascending=False)
+        .sort_values(num, ascending=False)
         .head(top)
     )
+    return agg
 
 
-# -------------------------------------------------
-# CHARTS (SAFE)
-# -------------------------------------------------
-def pie(df, v, c):
-    d = aggregate(df, c, v)
-    return px.pie(d, values=v, names=c, hole=0.3)
+# ======================================================
+# CHART BUILDERS (100% SAFE)
+# ======================================================
+def auto_charts(df):
+    charts = []
+
+    numeric, categorical, datetime = detect_columns(df)
+
+    # ---------- KPI ----------
+    if numeric:
+        kpi_cols = st.columns(len(numeric[:4]))
+        for i, col in enumerate(numeric[:4]):
+            kpi_cols[i].metric(col, round(df[col].sum(), 2))
+
+    # ---------- PIE / BAR ----------
+    if numeric and categorical:
+        agg = safe_group(df, categorical[0], numeric[0])
+
+        charts.append(px.pie(
+            agg,
+            names=categorical[0],
+            values=numeric[0],
+            title=f"{numeric[0]} by {categorical[0]}"
+        ))
+
+        charts.append(px.bar(
+            agg,
+            x=categorical[0],
+            y=numeric[0],
+            title=f"{numeric[0]} by {categorical[0]}"
+        ))
+
+    # ---------- SCATTER ----------
+    if len(numeric) >= 2:
+        charts.append(px.scatter(
+            df,
+            x=numeric[0],
+            y=numeric[1],
+            title=f"{numeric[1]} vs {numeric[0]}"
+        ))
+
+    # ---------- HISTOGRAM ----------
+    for col in numeric[:2]:
+        charts.append(px.histogram(df, x=col, title=f"Distribution of {col}"))
+
+    # ---------- TIME SERIES ----------
+    if datetime and numeric:
+        temp = df.copy()
+        temp[datetime[0]] = pd.to_datetime(temp[datetime[0]], errors="coerce")
+
+        charts.append(px.line(
+            temp.sort_values(datetime[0]),
+            x=datetime[0],
+            y=numeric[0],
+            title=f"{numeric[0]} over time"
+        ))
+
+    return charts
 
 
-def bar(df, x, y, orient="v"):
-    return px.bar(df, x=x, y=y, orientation=orient)
-
-
-def histogram(df, col):
-    return px.histogram(df, x=col, nbins=30)
-
-
-def scatter(df, x, y, color=None):
-    df = df.copy()
-    if color and df[color].nunique() < len(df):
-        df[color] = df[color].astype(str)
-    else:
-        color = None
-
-    return px.scatter(df, x=x, y=y, color=color)
-
-
-def bubble(df, x, y, size, color=None):
-    df = df.copy()
-
-    if color and df[color].nunique() < len(df):
-        df[color] = df[color].astype(str)
-    else:
-        color = None
-
-    return px.scatter(
-        df,
-        x=x,
-        y=y,
-        size=size,
-        color=color,
-        size_max=60
-    )
-
-
-def radial(df, cat, val):
-    d = aggregate(df, cat, val, 10)
-    fig = go.Figure(
-        go.Barpolar(
-            r=d[val],
-            theta=d[cat],
-            marker_color="skyblue"
-        )
-    )
-    fig.update_layout(polar=dict(radialaxis=dict(visible=True)))
-    return fig
-
-
-# -------------------------------------------------
+# ======================================================
 # MAIN APP
-# -------------------------------------------------
+# ======================================================
 def main():
-    st.markdown('<div class="main-header">📊 Auto Generated Dashboard</div>',
+    st.markdown('<div class="main-title">📊 Auto Dashboard Generator</div>',
                 unsafe_allow_html=True)
 
     with st.sidebar:
-        st.header("Upload File")
+        st.header("Upload Data File")
         file = st.file_uploader(
             "CSV | Excel | JSON | Parquet",
             type=["csv", "xlsx", "xls", "json", "parquet"]
         )
 
     if not file:
-        st.info("Upload a file to start")
+        st.info("Upload a file to generate dashboard")
         return
 
-    df = load_data(file)
+    df = load_file(file)
+
     if df is None:
-        st.error("File not supported")
+        st.error("Unsupported file format")
         return
 
-    numeric, categorical, datetime = detect_columns(df)
+    st.subheader("Dataset Preview")
+    st.dataframe(df.head(50), use_container_width=True)
 
-    # METRICS
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Rows", len(df))
-    c2.metric("Columns", len(df.columns))
-    c3.metric("Numeric", len(numeric))
-    c4.metric("Categorical", len(categorical))
+    st.divider()
 
-    with st.expander("Preview Data"):
-        st.dataframe(df.head(50), use_container_width=True)
+    st.subheader("📈 Auto Generated Dashboard")
 
-    st.header("📈 Auto Dashboard")
-
-    charts = []
-
-    if categorical and numeric:
-        charts.append(pie(df, numeric[0], categorical[0]))
-        charts.append(bar(aggregate(df, categorical[0], numeric[0]),
-                          categorical[0], numeric[0]))
-
-    if len(numeric) >= 2:
-        charts.append(scatter(
-            df, numeric[0], numeric[1],
-            categorical[0] if categorical else None
-        ))
-
-    if len(numeric) >= 3:
-        charts.append(bubble(
-            df, numeric[0], numeric[1], numeric[2],
-            categorical[0] if categorical else None
-        ))
-
-    for col in numeric[:2]:
-        charts.append(histogram(df, col))
-
-    if categorical and numeric:
-        charts.append(radial(df, categorical[0], numeric[0]))
+    charts = auto_charts(df)
 
     for i in range(0, len(charts), 2):
         cols = st.columns(2)
@@ -210,5 +184,6 @@ def main():
                 cols[j].plotly_chart(charts[i + j], use_container_width=True)
 
 
+# ======================================================
 if __name__ == "__main__":
     main()
