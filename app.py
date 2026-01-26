@@ -137,3 +137,80 @@ for i, col in enumerate(numeric_cols[:4]):
             <h2>{round(filtered_df[col].sum(),2)}</h2>
             <p>{col} (Total)</p>
         </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+# =====================================================
+# CHART SELECTION
+# =====================================================
+st.subheader("📊 Visual Analytics")
+
+left, right = st.columns(2)
+
+with left:
+    chart_1 = st.selectbox(
+        "Chart 1",
+        ["Bar", "Pie", "Line", "Scatter", "Histogram"]
+    )
+
+with right:
+    chart_2 = st.selectbox(
+        "Chart 2",
+        ["Bar", "Pie", "Line", "Scatter", "Histogram"]
+    )
+
+
+def draw_chart(chart_type):
+    if chart_type == "Bar" and categorical_cols and numeric_cols:
+        agg = filtered_df.groupby(
+            categorical_cols[0], as_index=False
+        )[numeric_cols[0]].sum()
+
+        return px.bar(
+            agg,
+            x=categorical_cols[0],
+            y=numeric_cols[0]
+        )
+
+    if chart_type == "Pie" and categorical_cols and numeric_cols:
+        agg = filtered_df.groupby(
+            categorical_cols[0], as_index=False
+        )[numeric_cols[0]].sum()
+
+        return px.pie(
+            agg,
+            names=categorical_cols[0],
+            values=numeric_cols[0]
+        )
+
+    if chart_type == "Line" and datetime_cols and numeric_cols:
+        return px.line(
+            filtered_df.sort_values(datetime_cols[0]),
+            x=datetime_cols[0],
+            y=numeric_cols[0]
+        )
+
+    if chart_type == "Scatter" and len(numeric_cols) >= 2:
+        return px.scatter(
+            filtered_df,
+            x=numeric_cols[0],
+            y=numeric_cols[1]
+        )
+
+    if chart_type == "Histogram" and numeric_cols:
+        return px.histogram(filtered_df, x=numeric_cols[0])
+
+    return None
+
+
+fig1 = draw_chart(chart_1)
+fig2 = draw_chart(chart_2)
+
+col1, col2 = st.columns(2)
+
+if fig1:
+    col1.plotly_chart(fig1, use_container_width=True)
+
+if fig2:
+    col2.plotly_chart(fig2, use_container_width=True)
