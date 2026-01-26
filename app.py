@@ -6,26 +6,42 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-# --------------------------------------------------
+# =====================================================
 # PAGE CONFIG
-# --------------------------------------------------
+# =====================================================
 st.set_page_config(
-    page_title="Interactive Auto Dashboard",
+    page_title="Advanced Auto Dashboard",
     page_icon="📊",
     layout="wide"
 )
 
-# --------------------------------------------------
-# TITLE
-# --------------------------------------------------
-st.markdown(
-    "<h1 style='text-align:center;color:#1f77b4;'>📊 Interactive Auto Dashboard</h1>",
-    unsafe_allow_html=True
-)
+# =====================================================
+# STYLE
+# =====================================================
+st.markdown("""
+<style>
+.kpi {
+    background:#f5f7fb;
+    padding:20px;
+    border-radius:15px;
+    text-align:center;
+    box-shadow:0 0 10px rgba(0,0,0,0.05);
+}
+.title {
+    font-size:2.6rem;
+    font-weight:800;
+    color:#1f77b4;
+    text-align:center;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# --------------------------------------------------
+st.markdown('<div class="title">📊 Advanced Auto Analytics Dashboard</div>',
+            unsafe_allow_html=True)
+
+# =====================================================
 # LOAD DATA
-# --------------------------------------------------
+# =====================================================
 @st.cache_data
 def load_file(file):
     if file.name.endswith(".csv"):
@@ -39,9 +55,9 @@ def load_file(file):
     return None
 
 
-# --------------------------------------------------
+# =====================================================
 # COLUMN DETECTION
-# --------------------------------------------------
+# =====================================================
 def detect_columns(df):
     numeric = df.select_dtypes(include=np.number).columns.tolist()
     categorical = df.select_dtypes(include=["object", "category"]).columns.tolist()
@@ -56,141 +72,68 @@ def detect_columns(df):
     return numeric, categorical, datetime
 
 
-# --------------------------------------------------
+# =====================================================
 # SIDEBAR
-# --------------------------------------------------
+# =====================================================
 with st.sidebar:
-    st.header("Upload File")
-    uploaded_file = st.file_uploader(
+    st.header("📁 Upload Data")
+    file = st.file_uploader(
         "CSV | Excel | JSON | Parquet",
         type=["csv", "xlsx", "xls", "json", "parquet"]
     )
 
-if not uploaded_file:
-    st.info("Upload a file to start")
-    st.stop()
+    if not file:
+        st.stop()
 
-df = load_file(uploaded_file)
-
-if df is None:
-    st.error("Unsupported file")
-    st.stop()
+df = load_file(file)
 
 numeric_cols, categorical_cols, datetime_cols = detect_columns(df)
 
-# --------------------------------------------------
-# PREVIEW
-# --------------------------------------------------
-st.subheader("Dataset Preview")
-st.dataframe(df.head(30), use_container_width=True)
+# =====================================================
+# FILTERS
+# =====================================================
+st.sidebar.header("🔎 Filters")
 
-# --------------------------------------------------
-# CHART SELECTION
-# --------------------------------------------------
-st.sidebar.header("Chart Options")
+filtered_df = df.copy()
 
-chart_type = st.sidebar.selectbox(
-    "Select Chart Type",
-    [
-        "Pie Chart",
-        "Bar Chart",
-        "Line Chart",
-        "Scatter Plot",
-        "Histogram"
-    ]
-)
+if categorical_cols:
+    cat_filter = st.sidebar.multiselect(
+        "Filter Category",
+        df[categorical_cols[0]].unique()
+    )
+    if cat_filter:
+        filtered_df = filtered_df[
+            filtered_df[categorical_cols[0]].isin(cat_filter)
+        ]
 
-# --------------------------------------------------
-# PIE CHART
-# --------------------------------------------------
-if chart_type == "Pie Chart":
-
-    cat = st.selectbox("Select Category Column", categorical_cols)
-    num = st.selectbox("Select Numeric Column", numeric_cols)
-
-    agg = df.groupby(cat, as_index=False)[num].sum()
-
-    fig = px.pie(
-        agg,
-        names=cat,
-        values=num,
-        title=f"{num} by {cat}"
+if datetime_cols:
+    filtered_df[datetime_cols[0]] = pd.to_datetime(
+        filtered_df[datetime_cols[0]], errors="coerce"
     )
 
-    st.plotly_chart(fig, use_container_width=True)
-
-
-# --------------------------------------------------
-# BAR CHART
-# --------------------------------------------------
-elif chart_type == "Bar Chart":
-
-    cat = st.selectbox("Select Category Column", categorical_cols)
-    num = st.selectbox("Select Numeric Column", numeric_cols)
-
-    agg = df.groupby(cat, as_index=False)[num].sum()
-
-    fig = px.bar(
-        agg,
-        x=cat,
-        y=num,
-        title=f"{num} by {cat}"
+    date_range = st.sidebar.date_input(
+        "Date Range",
+        [filtered_df[datetime_cols[0]].min(),
+         filtered_df[datetime_cols[0]].max()]
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    if len(date_range) == 2:
+        filtered_df = filtered_df[
+            (filtered_df[datetime_cols[0]] >= pd.to_datetime(date_range[0])) &
+            (filtered_df[datetime_cols[0]] <= pd.to_datetime(date_range[1]))
+        ]
 
+# =====================================================
+# KPI CARDS
+# =====================================================
+st.subheader("📌 Key Metrics")
 
-# --------------------------------------------------
-# LINE CHART
-# --------------------------------------------------
-elif chart_type == "Line Chart":
+kpi_cols = st.columns(min(4, len(numeric_cols)))
 
-    date_col = st.selectbox("Select Date Column", datetime_cols)
-    num = st.selectbox("Select Numeric Column", numeric_cols)
-
-    temp = df.copy()
-    temp[date_col] = pd.to_datetime(temp[date_col], errors="coerce")
-
-    fig = px.line(
-        temp.sort_values(date_col),
-        x=date_col,
-        y=num,
-        title=f"{num} over Time"
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-
-# --------------------------------------------------
-# SCATTER
-# --------------------------------------------------
-elif chart_type == "Scatter Plot":
-
-    x = st.selectbox("X-axis", numeric_cols)
-    y = st.selectbox("Y-axis", numeric_cols)
-
-    fig = px.scatter(
-        df,
-        x=x,
-        y=y,
-        title=f"{y} vs {x}"
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-
-# --------------------------------------------------
-# HISTOGRAM
-# --------------------------------------------------
-elif chart_type == "Histogram":
-
-    col = st.selectbox("Select Numeric Column", numeric_cols)
-
-    fig = px.histogram(
-        df,
-        x=col,
-        nbins=30,
-        title=f"Distribution of {col}"
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
+for i, col in enumerate(numeric_cols[:4]):
+    kpi_cols[i].markdown(
+        f"""
+        <div class="kpi">
+            <h2>{round(filtered_df[col].sum(),2)}</h2>
+            <p>{col} (Total)</p>
+        </div>
