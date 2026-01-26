@@ -2,37 +2,30 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
 import warnings
 
 warnings.filterwarnings("ignore")
 
-# ======================================================
+# --------------------------------------------------
 # PAGE CONFIG
-# ======================================================
+# --------------------------------------------------
 st.set_page_config(
-    page_title="Auto Dashboard Generator",
+    page_title="Interactive Auto Dashboard",
     page_icon="📊",
     layout="wide"
 )
 
-# ======================================================
-# STYLE
-# ======================================================
-st.markdown("""
-<style>
-.main-title {
-    font-size: 2.8rem;
-    font-weight: 800;
-    text-align: center;
-    color: #1f77b4;
-}
-</style>
-""", unsafe_allow_html=True)
+# --------------------------------------------------
+# TITLE
+# --------------------------------------------------
+st.markdown(
+    "<h1 style='text-align:center;color:#1f77b4;'>📊 Interactive Auto Dashboard</h1>",
+    unsafe_allow_html=True
+)
 
-# ======================================================
+# --------------------------------------------------
 # LOAD DATA
-# ======================================================
+# --------------------------------------------------
 @st.cache_data
 def load_file(file):
     if file.name.endswith(".csv"):
@@ -46,9 +39,9 @@ def load_file(file):
     return None
 
 
-# ======================================================
+# --------------------------------------------------
 # COLUMN DETECTION
-# ======================================================
+# --------------------------------------------------
 def detect_columns(df):
     numeric = df.select_dtypes(include=np.number).columns.tolist()
     categorical = df.select_dtypes(include=["object", "category"]).columns.tolist()
@@ -63,127 +56,141 @@ def detect_columns(df):
     return numeric, categorical, datetime
 
 
-# ======================================================
-# SAFE AGGREGATION
-# ======================================================
-def safe_group(df, cat, num, top=15):
-    df = df.copy()
-
-    for c in ["index", "level_0"]:
-        if c in df.columns:
-            df.drop(columns=c, inplace=True)
-
-    df[cat] = df[cat].astype(str)
-
-    agg = (
-        df.groupby(cat, as_index=False)[num]
-        .sum()
-        .sort_values(num, ascending=False)
-        .head(top)
+# --------------------------------------------------
+# SIDEBAR
+# --------------------------------------------------
+with st.sidebar:
+    st.header("Upload File")
+    uploaded_file = st.file_uploader(
+        "CSV | Excel | JSON | Parquet",
+        type=["csv", "xlsx", "xls", "json", "parquet"]
     )
-    return agg
+
+if not uploaded_file:
+    st.info("Upload a file to start")
+    st.stop()
+
+df = load_file(uploaded_file)
+
+if df is None:
+    st.error("Unsupported file")
+    st.stop()
+
+numeric_cols, categorical_cols, datetime_cols = detect_columns(df)
+
+# --------------------------------------------------
+# PREVIEW
+# --------------------------------------------------
+st.subheader("Dataset Preview")
+st.dataframe(df.head(30), use_container_width=True)
+
+# --------------------------------------------------
+# CHART SELECTION
+# --------------------------------------------------
+st.sidebar.header("Chart Options")
+
+chart_type = st.sidebar.selectbox(
+    "Select Chart Type",
+    [
+        "Pie Chart",
+        "Bar Chart",
+        "Line Chart",
+        "Scatter Plot",
+        "Histogram"
+    ]
+)
+
+# --------------------------------------------------
+# PIE CHART
+# --------------------------------------------------
+if chart_type == "Pie Chart":
+
+    cat = st.selectbox("Select Category Column", categorical_cols)
+    num = st.selectbox("Select Numeric Column", numeric_cols)
+
+    agg = df.groupby(cat, as_index=False)[num].sum()
+
+    fig = px.pie(
+        agg,
+        names=cat,
+        values=num,
+        title=f"{num} by {cat}"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
 
 
-# ======================================================
-# CHART BUILDERS (100% SAFE)
-# ======================================================
-def auto_charts(df):
-    charts = []
+# --------------------------------------------------
+# BAR CHART
+# --------------------------------------------------
+elif chart_type == "Bar Chart":
 
-    numeric, categorical, datetime = detect_columns(df)
+    cat = st.selectbox("Select Category Column", categorical_cols)
+    num = st.selectbox("Select Numeric Column", numeric_cols)
 
-    # ---------- KPI ----------
-    if numeric:
-        kpi_cols = st.columns(len(numeric[:4]))
-        for i, col in enumerate(numeric[:4]):
-            kpi_cols[i].metric(col, round(df[col].sum(), 2))
+    agg = df.groupby(cat, as_index=False)[num].sum()
 
-    # ---------- PIE / BAR ----------
-    if numeric and categorical:
-        agg = safe_group(df, categorical[0], numeric[0])
+    fig = px.bar(
+        agg,
+        x=cat,
+        y=num,
+        title=f"{num} by {cat}"
+    )
 
-        charts.append(px.pie(
-            agg,
-            names=categorical[0],
-            values=numeric[0],
-            title=f"{numeric[0]} by {categorical[0]}"
-        ))
-
-        charts.append(px.bar(
-            agg,
-            x=categorical[0],
-            y=numeric[0],
-            title=f"{numeric[0]} by {categorical[0]}"
-        ))
-
-    # ---------- SCATTER ----------
-    if len(numeric) >= 2:
-        charts.append(px.scatter(
-            df,
-            x=numeric[0],
-            y=numeric[1],
-            title=f"{numeric[1]} vs {numeric[0]}"
-        ))
-
-    # ---------- HISTOGRAM ----------
-    for col in numeric[:2]:
-        charts.append(px.histogram(df, x=col, title=f"Distribution of {col}"))
-
-    # ---------- TIME SERIES ----------
-    if datetime and numeric:
-        temp = df.copy()
-        temp[datetime[0]] = pd.to_datetime(temp[datetime[0]], errors="coerce")
-
-        charts.append(px.line(
-            temp.sort_values(datetime[0]),
-            x=datetime[0],
-            y=numeric[0],
-            title=f"{numeric[0]} over time"
-        ))
-
-    return charts
+    st.plotly_chart(fig, use_container_width=True)
 
 
-# ======================================================
-# MAIN APP
-# ======================================================
-def main():
-    st.markdown('<div class="main-title">📊 Auto Dashboard Generator</div>',
-                unsafe_allow_html=True)
+# --------------------------------------------------
+# LINE CHART
+# --------------------------------------------------
+elif chart_type == "Line Chart":
 
-    with st.sidebar:
-        st.header("Upload Data File")
-        file = st.file_uploader(
-            "CSV | Excel | JSON | Parquet",
-            type=["csv", "xlsx", "xls", "json", "parquet"]
-        )
+    date_col = st.selectbox("Select Date Column", datetime_cols)
+    num = st.selectbox("Select Numeric Column", numeric_cols)
 
-    if not file:
-        st.info("Upload a file to generate dashboard")
-        return
+    temp = df.copy()
+    temp[date_col] = pd.to_datetime(temp[date_col], errors="coerce")
 
-    df = load_file(file)
+    fig = px.line(
+        temp.sort_values(date_col),
+        x=date_col,
+        y=num,
+        title=f"{num} over Time"
+    )
 
-    if df is None:
-        st.error("Unsupported file format")
-        return
-
-    st.subheader("Dataset Preview")
-    st.dataframe(df.head(50), use_container_width=True)
-
-    st.divider()
-
-    st.subheader("📈 Auto Generated Dashboard")
-
-    charts = auto_charts(df)
-
-    for i in range(0, len(charts), 2):
-        cols = st.columns(2)
-        for j in range(2):
-            if i + j < len(charts):
-                cols[j].plotly_chart(charts[i + j], use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
 
-# ======================================================
-if __name__ == "__main__":
-    main()
+# --------------------------------------------------
+# SCATTER
+# --------------------------------------------------
+elif chart_type == "Scatter Plot":
+
+    x = st.selectbox("X-axis", numeric_cols)
+    y = st.selectbox("Y-axis", numeric_cols)
+
+    fig = px.scatter(
+        df,
+        x=x,
+        y=y,
+        title=f"{y} vs {x}"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# --------------------------------------------------
+# HISTOGRAM
+# --------------------------------------------------
+elif chart_type == "Histogram":
+
+    col = st.selectbox("Select Numeric Column", numeric_cols)
+
+    fig = px.histogram(
+        df,
+        x=col,
+        nbins=30,
+        title=f"Distribution of {col}"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
